@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PTG - Quiz Film & Série 🎬</title>
+    <title>PTG - 3 Images - 1 Film 🎬</title>
     <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
     <link rel="icon" type="image/png" sizes="192x192" href="favicon.png">
     <link rel="icon" type="image/png" sizes="512x512" href="favicon.png">
@@ -13,7 +13,7 @@
     <meta name="theme-color" content="#0a0e27">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Quiz Film PTG">
+    <meta name="apple-mobile-web-app-title" content="PTG - 3 Images - 1 Film">
     <meta name="mobile-web-app-capable" content="yes">
     <link href="https://fonts.googleapis.com/css2?family=Bungee+Shade&family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
@@ -1630,8 +1630,8 @@
     <div class="screen" id="menu-screen">
         <div class="logo">
             <div class="title">QUIZ Play Thau'Gether</div>
-            <div class="subtitle" style="font-size: 1.4rem; margin-top: 0.3rem;">Film / Série / Jeux Vidéo</div>
-            <div class="subtitle">🎬 3 Images, 1 Oeuvre — Trouve le plus vite !</div>
+            <div class="subtitle" style="font-size: 1.4rem; margin-top: 0.3rem;">Film / Film d'Animation</div>
+            <div class="subtitle">🎬 3 Images, 1 Film — Trouve le plus vite !</div>
         </div>
         <div class="menu-buttons">
             <button class="btn large" onclick="requireLoginThen(goToCreateScreen)">🎬 Créer une partie</button>
@@ -2490,14 +2490,11 @@ function levenshteinDistance(a, b) {
 }
 
 // Extract numbers (Arabic digits + Roman numerals as standalone words)
-// Returns sorted array of normalized numbers, e.g. "Rocky III" -> ["3"], "Star Wars 4" -> ["4"]
 const ROMAN_MAP = { i:1, ii:2, iii:3, iv:4, v:5, vi:6, vii:7, viii:8, ix:9, x:10, xi:11, xii:12, xiii:13, xiv:14, xv:15 };
 function extractNumbers(text) {
     const nums = [];
-    // Arabic digits
     const arabic = text.match(/\d+/g);
     if (arabic) arabic.forEach(n => nums.push(parseInt(n, 10)));
-    // Roman numerals as standalone words
     const words = text.split(/\s+/);
     words.forEach(w => {
         if (ROMAN_MAP[w] !== undefined) nums.push(ROMAN_MAP[w]);
@@ -2524,7 +2521,6 @@ function isAnswerSimilar(input, correct) {
     if (a === b) return true;
     
     // STRICT: numbers must match exactly (Arabic digits + Roman numerals)
-    // This blocks "harry potter 1" vs "harry potter 2", "rocky III" vs "rocky II", etc.
     if (!numbersMatch(a, b)) return false;
     
     // Levenshtein tolerance for typos only
