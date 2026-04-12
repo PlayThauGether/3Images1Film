@@ -2540,11 +2540,75 @@ function isAnswerSimilarMulti(input, answerField) {
 }
 
 // Determine answer type: 'exact' (full title VF or VO), 'alias' (variant), or 'none' (wrong)
+// Check if the title (without numbers) is fully contained in the alias text.
+// If yes, the alias is considered an "extended" version of the title (e.g. "Avengers 1" extends "Avengers")
+// and the player gets full points instead of being put in bonus mode.
+function aliasContainsTitle(aliasText, titleField) {
+    if (!aliasText || !titleField) return false;
+    // Get all valid title variants (VF / VO)
+    const titleVariants = titleField.split(' / ').map(t => t.trim()).filter(t => t);
+    // Normalize alias: remove numbers (we just want to check the words)
+    const normAlias = normalizeAnswer(aliasText).replace(/\d+/g, '').replace(/\s+/g, ' ').trim();
+    // Check if any title variant is fully contained in the alias
+    return titleVariants.some(title => {
+        const normTitle = normalizeAnswer(title).replace(/\d+/g, '').replace(/\s+/g, ' ').trim();
+        if (!normTitle) return false;
+        // Check if all words of the title appear in the alias (in order or not)
+        const titleWords = normTitle.split(' ').filter(w => w.length > 0);
+        const aliasWords = normAlias.split(' ').filter(w => w.length > 0);
+        return titleWords.every(tw => aliasWords.some(aw => aw === tw));
+    });
+}
+
 function checkAnswerType(input, question) {
     if (!question) return 'none';
     if (isAnswerSimilarMulti(input, question.answer)) return 'exact';
-    if (question.aliases && isAnswerSimilarMulti(input, question.aliases)) return 'alias';
+    if (question.aliases && isAnswerSimilarMulti(input, question.aliases)) {
+        // Smart check: if the matched alias contains the full title, treat as exact
+        // This handles "Avengers 1" being an alias of "Avengers" — player shouldn't be punished
+        const matchedAlias = question.aliases.split(' / ')
+            .map(a => a.trim())
+            .find(a => isAnswerSimilar(input, a));
+        if (matchedAlias && aliasContainsTitle(matchedAlias, question.answer)) {
+            return 'exact';
+        }
+        return 'alias';
+    }
     return 'none';
+}
+
+// Detect if input matches the title/alias EXCEPT for numbers
+// e.g. "Spider-man" for "Spider-man 3" → returns true (close match, just missing number)
+// Used to give a hint without points
+function isCloseButMissingNumber(input, question) {
+    if (!question) return false;
+    const inputNums = extractNumbers(normalizeAnswer(input));
+    // Build list of all valid targets (title + aliases)
+    const targets = [];
+    if (question.answer) {
+        question.answer.split(' / ').forEach(t => { if (t.trim()) targets.push(t.trim()); });
+    }
+    if (question.aliases) {
+        question.aliases.split(' / ').forEach(t => { if (t.trim()) targets.push(t.trim()); });
+    }
+    // Check each target: does it have numbers that the input is missing?
+    for (let i = 0; i < targets.length; i++) {
+        const target = targets[i];
+        const targetNums = extractNumbers(normalizeAnswer(target));
+        // Target must have numbers, and they must differ from input's numbers
+        if (targetNums.length === 0) continue;
+        // Now check if without numbers, input matches target
+        const a = normalizeAnswer(input).replace(/\d+/g, '').replace(/\b(i|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv)\b/g, '').replace(/\s+/g, ' ').trim();
+        const b = normalizeAnswer(target).replace(/\d+/g, '').replace(/\b(i|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv)\b/g, '').replace(/\s+/g, ' ').trim();
+        if (!a || !b) continue;
+        // Use levenshtein to check closeness
+        if (a === b) return true;
+        const dist = levenshteinDistance(a, b);
+        const maxLen = Math.max(a.length, b.length);
+        if (maxLen <= 6 && dist <= 1) return true;
+        if (maxLen > 6 && dist <= Math.floor(maxLen * 0.25)) return true;
+    }
+    return false;
 }
 
 // Get display name (first answer only, for reveal screen)
@@ -4670,23 +4734,41 @@ async function submitAnswer() {
             document.getElementById('submit-answer-btn').disabled = true;
         }
     } else {
-        // Wrong answer — let them retry
-        fb.className = 'answer-feedback wrong';
-        fb.textContent = '❌ Mauvaise réponse, réessaie !';
-        fb.style.display = 'block';
-        playSound('wrong');
+        // Check if the answer is close but missing a number (e.g. "Spider-man" for "Spider-man 3")
+        if (isCloseButMissingNumber(input, q)) {
+            fb.className = 'answer-feedback wrong';
+            fb.innerHTML = `🤔 ${input} oui... mais lequel ?`;
+            fb.style.display = 'block';
+            playSound('wrong');
 
-        // Clear input for retry
-        document.getElementById('answer-input').value = '';
-        document.getElementById('answer-input').focus();
+            document.getElementById('answer-input').value = '';
+            document.getElementById('answer-input').focus();
 
-        // Fade out feedback after 1.5s
-        clearTimeout(gameState.wrongFeedbackTimeout);
-        gameState.wrongFeedbackTimeout = setTimeout(() => {
-            if (!gameState.answered) {
-                fb.style.display = 'none';
-            }
-        }, 1500);
+            clearTimeout(gameState.wrongFeedbackTimeout);
+            gameState.wrongFeedbackTimeout = setTimeout(() => {
+                if (!gameState.answered) {
+                    fb.style.display = 'none';
+                }
+            }, 2500);
+        } else {
+            // Wrong answer — let them retry
+            fb.className = 'answer-feedback wrong';
+            fb.textContent = '❌ Mauvaise réponse, réessaie !';
+            fb.style.display = 'block';
+            playSound('wrong');
+
+            // Clear input for retry
+            document.getElementById('answer-input').value = '';
+            document.getElementById('answer-input').focus();
+
+            // Fade out feedback after 1.5s
+            clearTimeout(gameState.wrongFeedbackTimeout);
+            gameState.wrongFeedbackTimeout = setTimeout(() => {
+                if (!gameState.answered) {
+                    fb.style.display = 'none';
+                }
+            }, 1500);
+        }
     }
 
     updateSideScores();
@@ -4710,8 +4792,13 @@ async function submitBonusAnswer() {
             gameState.room.players[gameState.playerIndex].score += 0.5;
         }
 
+        // Calculate question total
+        const fullQuestionPoints = 4 - gameState.answeredAtImage; // 3, 2, or 1
+        const aliasPoints = fullQuestionPoints - 0.5;
+        const totalQuestionPoints = aliasPoints + 0.5;
+
         fb.className = 'answer-feedback correct';
-        fb.innerHTML = `💎 Bonus ! +0.5 pt — Score : ${gameState.room.players[gameState.playerIndex].score}`;
+        fb.innerHTML = `💎 Bonus ! +0.5 pt<br><span style="font-size:0.9rem;">Total sur cette question : <strong>${totalQuestionPoints} pt${totalQuestionPoints > 1 ? 's' : ''}</strong> (${aliasPoints} + 0.5)</span>`;
         playSound('correct');
 
         document.getElementById('my-score').textContent = gameState.room.players[gameState.playerIndex]?.score || 0;
